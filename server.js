@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const path = require('path'); // ✅ Necesario para servir React
 
 const app = express();
 const pool = require('./db');
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -19,7 +21,7 @@ const consultaRoutes = require('./routes/consultaRoutes');
 const recepcionistaRoutes = require('./routes/recepcionistaRoutes');
 const usuarioRoutes = require('./routes/usuarioRoutes');
 
-// Usar rutas
+// Usar rutas API
 app.use('/api/auth', authRoutes);
 app.use('/api/clientes', clienteRoutes);
 app.use('/api/equipos', equipoRoutes);
@@ -29,6 +31,14 @@ app.use('/api/entrega', entregaRoutes);
 app.use('/api/consulta', consultaRoutes);
 app.use('/api/recepcionista', recepcionistaRoutes);
 app.use('/api/usuarios', usuarioRoutes);
+
+// ✅ Servir archivos estáticos de React (build)
+app.use(express.static(path.join(__dirname, 'build')));
+
+// ✅ Redirigir todo lo que no sea API al index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+});
 
 // Puerto
 const PORT = process.env.PORT || 5000;
