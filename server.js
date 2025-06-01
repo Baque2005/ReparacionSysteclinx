@@ -45,3 +45,11 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Servidor backend activo en puerto ${PORT}`);
 });
+
+pool.query('SELECT NOW()', (err, result) => {
+  if (err) {
+    console.error('❌ Error conectando a la base de datos:', err);
+  } else {
+    console.log('✅ Conexión a la base de datos exitosa:', result.rows);
+  }
+});
