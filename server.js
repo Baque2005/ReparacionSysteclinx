@@ -36,7 +36,7 @@ app.use('/api/usuarios', usuarioRoutes);
 app.use(express.static(path.join(__dirname, 'build')));
 
 // ✅ Redirigir todo lo que no sea API al index.html
-app.get('*', (req, res) => {
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
