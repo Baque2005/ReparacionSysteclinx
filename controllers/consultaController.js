@@ -201,10 +201,10 @@ exports.actualizarAprobacionPresupuesto = async (req, res) => {
       `, [clienteNombre, 'Reparación y diagnóstico', total, clienteID, orden_id]);
     } else {
       // Rechazado: solo diagnóstico
-      await pool.query(`
-        INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
-        VALUES ($1, $2, 10, false, $3, $4)
-      `, [clienteNombre, 'Diagnóstico', clienteID, orden_id]);
+await pool.query(`
+  INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
+  VALUES ($1, $2, $3, $4, $5, $6)
+`, [clienteNombre, 'Diagnóstico', 10, false, clienteID, orden_id]);
     }
 
     res.json({ mensaje: 'Aprobación actualizada y factura generada correctamente.' });
