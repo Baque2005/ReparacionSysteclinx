@@ -5,45 +5,34 @@ exports.aprobarReparacion = async (req, res) => {
   const { orden_id, aprobado } = req.body;
 
   try {
-    // Actualizar autorización
+    // Actualizar campos de autorización
     await pool.query(
       'UPDATE ordenes SET requiere_autorizacion = TRUE, autorizado = $1, aprobado = $1 WHERE id = $2',
       [aprobado, orden_id]
     );
 
+    // Si el cliente rechaza, generar factura de diagnóstico
     if (!aprobado) {
-      // Buscar datos del cliente
-      const clienteRes = await pool.query(`
-        SELECT c.correo
-        FROM ordenes o
-        JOIN equipos e ON o.equipo_id = e.id
-        JOIN clientes c ON e.cliente_id = c.id
-        WHERE o.id = $1
-      `, [orden_id]);
+      const montoDiagnostico = 10;
+      const iva = montoDiagnostico * 0.15;
+      const total = montoDiagnostico + iva;
 
-      const correo_cliente = clienteRes.rows[0]?.correo;
+      await pool.query(
+        `INSERT INTO facturas (orden_id, monto, tipo, pagado)
+         VALUES ($1, $2, 'Diagnóstico', false)`,
+        [orden_id, total]
+      );
 
-      if (!correo_cliente) {
-        return res.status(404).json({ mensaje: 'No se encontró el correo del cliente para la orden' });
-      }
-
-      // Generar factura de diagnóstico ($10 + IVA 15%)
-      const monto = 10;
-      const iva = 0.15;
-      const total = +(monto + monto * iva).toFixed(2);
-
-      await pool.query(`
-        INSERT INTO facturas (orden_id, correo_cliente, monto, tipo, concepto, pagado)
-        VALUES ($1, $2, $3, 'diagnostico', 'Diagnóstico técnico', false)
-      `, [orden_id, correo_cliente, total]);
-
-      return res.json({ mensaje: 'Presupuesto rechazado. Factura de diagnóstico generada.' });
+      return res.json({
+        mensaje: '❌ Reparación rechazada. Factura de diagnóstico generada.',
+        factura: { monto: total, tipo: 'Diagnóstico' }
+      });
     }
 
-    res.json({ mensaje: 'Presupuesto aprobado. Factura se generará al finalizar la reparación.' });
+    res.json({ mensaje: '✅ Presupuesto aprobado. Factura se generará al finalizar la reparación.' });
 
   } catch (error) {
-    console.error(error);
+    console.error('❌ Error al procesar aprobación:', error);
     res.status(500).json({ mensaje: 'Error al registrar aprobación o rechazo' });
   }
 };
@@ -67,7 +56,6 @@ exports.registrarPago = async (req, res) => {
       'SELECT orden_id FROM facturas WHERE id = $1',
       [factura_id]
     );
-
     const orden_id = ordenRes.rows[0].orden_id;
 
     await pool.query(
@@ -89,7 +77,6 @@ exports.registrarPago = async (req, res) => {
   }
 };
 
-// Obtener facturas pendientes
 exports.obtenerFacturasPendientes = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -107,7 +94,6 @@ exports.obtenerFacturasPendientes = async (req, res) => {
   }
 };
 
-// Obtener facturas por ID de cliente
 exports.obtenerFacturasPorCliente = async (req, res) => {
   const { cliente_id } = req.params;
   try {
@@ -127,7 +113,6 @@ exports.obtenerFacturasPorCliente = async (req, res) => {
   }
 };
 
-// Obtener facturas por correo del cliente
 exports.obtenerFacturasPorCorreo = async (req, res) => {
   const { correo } = req.params;
   try {
@@ -148,7 +133,6 @@ exports.obtenerFacturasPorCorreo = async (req, res) => {
   }
 };
 
-// Obtener facturas pagadas con fecha de pago
 exports.obtenerFacturasPagadas = async (req, res) => {
   try {
     const result = await pool.query(`
