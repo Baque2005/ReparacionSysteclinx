@@ -166,12 +166,15 @@ exports.obtenerFacturasPendientes = async (req, res) => {
 };
 
 // Actualizar aprobación del presupuesto y generar factura
+// Actualizar aprobación del presupuesto y generar factura
 exports.actualizarAprobacionPresupuesto = async (req, res) => {
   const { orden_id } = req.params;
   const { aprobado } = req.body;
   try {
+    // Actualizar campo 'aprobado' en la orden
     await pool.query(`UPDATE ordenes SET aprobado = $1 WHERE id = $2`, [aprobado, orden_id]);
 
+    // Obtener datos del cliente y orden
     const datosOrden = await pool.query(`
       SELECT o.id AS orden_id, c.nombre AS cliente_nombre, c.correo, c.id AS cliente_id
       FROM ordenes o
@@ -180,25 +183,49 @@ exports.actualizarAprobacionPresupuesto = async (req, res) => {
       WHERE o.id = $1
     `, [orden_id]);
 
-    if (datosOrden.rows.length === 0) return res.status(404).json({ mensaje: 'Orden no encontrada' });
+    if (datosOrden.rows.length === 0) {
+      return res.status(404).json({ mensaje: 'Orden no encontrada' });
+    }
 
     const clienteNombre = datosOrden.rows[0].cliente_nombre;
     const clienteID = datosOrden.rows[0].cliente_id;
 
     if (aprobado) {
+      // Obtener materiales y calcular subtotal
       const materiales = await pool.query(`SELECT precio FROM presupuestos WHERE orden_id = $1`, [orden_id]);
       const subtotal = materiales.rows.reduce((acc, mat) => acc + Number(mat.precio), 0);
       const total = subtotal + 10;
 
+      // Generar factura por reparación y diagnóstico
       await pool.query(`
         INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
         VALUES ($1, $2, $3, false, $4, $5)
       `, [clienteNombre, 'Reparación y diagnóstico', total, clienteID, orden_id]);
     } else {
+      // Generar factura solo por diagnóstico (con IVA)
+      const totalDiagnostico = 10 * 1.15;
+
       await pool.query(`
         INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
         VALUES ($1, $2, $3, false, $4, $5)
-      `, [clienteNombre, 'Diagnóstico', 10, clienteID, orden_id]);
+      `, [clienteNombre, 'Diagnóstico', totalDiagnostico, clienteID, orden_id]);
+
+      // Cambiar estado a 'lista para entrega'
+      await pool.query(`
+        UPDATE ordenes SET estado_actual = 'lista para entrega' WHERE id = $1
+      `, [orden_id]);
+
+      // Registrar en historial técnico
+      await pool.query(`
+        INSERT INTO historial_tecnico (orden_id, descripcion)
+        VALUES ($1, $2)
+      `, [orden_id, 'El cliente rechazó el presupuesto. Se finalizó con diagnóstico.']);
+
+      // Registrar en historial general para administrador
+      await pool.query(`
+        INSERT INTO historial (orden_id, descripcion)
+        VALUES ($1, $2)
+      `, [orden_id, 'Se emitió factura por diagnóstico tras rechazo del cliente.']);
     }
 
     res.json({ mensaje: 'Aprobación actualizada y factura generada correctamente.' });
