@@ -46,7 +46,7 @@ const enviarCorreoBienvenida = async (destinatario, nombreCliente, contraseña) 
 
           <p>Puedes iniciar sesión haciendo clic en el siguiente enlace:</p>
           <p style="text-align: center;">
-            <a href="http://localhost:3000" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Acceder a mi cuenta</a>
+            <a href="https://reparacionsysteclinx.onrender.com" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Acceder a mi cuenta</a>
           </p>
 
           <p style="font-size: 0.9em; color: #777; margin-top: 30px;">
@@ -82,7 +82,7 @@ const enviarCorreoReset = async (destinatario, token) => {
         <p>Recibimos una solicitud para restablecer tu contraseña.</p>
         <p>Haz clic en el botón de abajo para establecer una nueva:</p>
         <p style="text-align: center;">
-          <a href="http://localhost:3000/cambiar-contraseña?token=${token}" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+          <a href="https://reparacionsysteclinx.onrender.com/cambiar-contraseña?token=${token}" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
             Cambiar mi contraseña
           </a>
         </p>
@@ -113,7 +113,7 @@ const enviarCorreoPresupuesto = async (destinatario, ordenId) => {
         <p>El técnico ha registrado un presupuesto para tu orden <strong>#${ordenId}</strong>.</p>
         <p>Por favor, entra a tu cuenta para revisar los detalles y aprobar o rechazar el presupuesto.</p>
         <p style="text-align: center;">
-          <a href="http://localhost:3000" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+          <a href="https://reparacionsysteclinx.onrender.com" style="background-color: #004080; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
             Ingresar a SYSTECLINX
           </a>
         </p>
