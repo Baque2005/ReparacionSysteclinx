@@ -5,16 +5,39 @@ exports.aprobarReparacion = async (req, res) => {
   const { orden_id, aprobado } = req.body;
 
   try {
-    // Solo actualizar la autorización
+    // Actualizar autorización
     await pool.query(
       'UPDATE ordenes SET requiere_autorizacion = TRUE, autorizado = $1, aprobado = $1 WHERE id = $2',
       [aprobado, orden_id]
     );
 
     if (!aprobado) {
-      return res.json({
-        mensaje: 'Reparación rechazada. No se generó factura.'
-      });
+      // Buscar datos del cliente
+      const clienteRes = await pool.query(`
+        SELECT c.correo
+        FROM ordenes o
+        JOIN equipos e ON o.equipo_id = e.id
+        JOIN clientes c ON e.cliente_id = c.id
+        WHERE o.id = $1
+      `, [orden_id]);
+
+      const correo_cliente = clienteRes.rows[0]?.correo;
+
+      if (!correo_cliente) {
+        return res.status(404).json({ mensaje: 'No se encontró el correo del cliente para la orden' });
+      }
+
+      // Generar factura de diagnóstico ($10 + IVA 15%)
+      const monto = 10;
+      const iva = 0.15;
+      const total = +(monto + monto * iva).toFixed(2);
+
+      await pool.query(`
+        INSERT INTO facturas (orden_id, correo_cliente, monto, tipo, concepto, pagado)
+        VALUES ($1, $2, $3, 'diagnostico', 'Diagnóstico técnico', false)
+      `, [orden_id, correo_cliente, total]);
+
+      return res.json({ mensaje: 'Presupuesto rechazado. Factura de diagnóstico generada.' });
     }
 
     res.json({ mensaje: 'Presupuesto aprobado. Factura se generará al finalizar la reparación.' });
@@ -30,23 +53,21 @@ exports.registrarPago = async (req, res) => {
   const { factura_id, metodo_pago, monto_pagado } = req.body;
 
   try {
-    // Insertar pago
     await pool.query(
       'INSERT INTO pagos (factura_id, metodo_pago, monto_pagado) VALUES ($1, $2, $3)',
       [factura_id, metodo_pago, monto_pagado]
     );
 
-    // Marcar factura como pagada
     await pool.query(
       'UPDATE facturas SET pagado = TRUE WHERE id = $1',
       [factura_id]
     );
 
-    // Cambiar estado de la orden a "lista para entrega"
     const ordenRes = await pool.query(
       'SELECT orden_id FROM facturas WHERE id = $1',
       [factura_id]
     );
+
     const orden_id = ordenRes.rows[0].orden_id;
 
     await pool.query(
@@ -68,6 +89,7 @@ exports.registrarPago = async (req, res) => {
   }
 };
 
+// Obtener facturas pendientes
 exports.obtenerFacturasPendientes = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -85,6 +107,7 @@ exports.obtenerFacturasPendientes = async (req, res) => {
   }
 };
 
+// Obtener facturas por ID de cliente
 exports.obtenerFacturasPorCliente = async (req, res) => {
   const { cliente_id } = req.params;
   try {

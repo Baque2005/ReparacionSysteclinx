@@ -17,7 +17,7 @@ exports.obtenerOrdenesPorCliente = async (req, res) => {
   }
 };
 
-// Historial de estados de una orden
+// Obtener historial de una orden
 exports.obtenerHistorialDeOrden = async (req, res) => {
   const { orden_id } = req.params;
   try {
@@ -115,7 +115,7 @@ exports.obtenerPresupuestoPorOrden = async (req, res) => {
   }
 };
 
-// Obtener órdenes por correo del cliente
+// Obtener órdenes por correo
 exports.obtenerOrdenesPorCorreo = async (req, res) => {
   const { correo } = req.params;
   try {
@@ -133,7 +133,7 @@ exports.obtenerOrdenesPorCorreo = async (req, res) => {
   }
 };
 
-// Obtener facturas pagadas (nueva función)
+// Obtener facturas pagadas
 exports.obtenerFacturasPagadas = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -149,7 +149,7 @@ exports.obtenerFacturasPagadas = async (req, res) => {
   }
 };
 
-// Obtener facturas pendientes (nueva función)
+// Obtener facturas pendientes
 exports.obtenerFacturasPendientes = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -165,14 +165,13 @@ exports.obtenerFacturasPendientes = async (req, res) => {
   }
 };
 
+// Actualizar aprobación del presupuesto y generar factura
 exports.actualizarAprobacionPresupuesto = async (req, res) => {
   const { orden_id } = req.params;
-  const { aprobado } = req.body; // true o false
+  const { aprobado } = req.body;
   try {
-    // Actualizar estado de aprobación
     await pool.query(`UPDATE ordenes SET aprobado = $1 WHERE id = $2`, [aprobado, orden_id]);
 
-    // Obtener cliente y materiales
     const datosOrden = await pool.query(`
       SELECT o.id AS orden_id, c.nombre AS cliente_nombre, c.correo, c.id AS cliente_id
       FROM ordenes o
@@ -187,24 +186,19 @@ exports.actualizarAprobacionPresupuesto = async (req, res) => {
     const clienteID = datosOrden.rows[0].cliente_id;
 
     if (aprobado) {
-      // Aprobado: obtener materiales
-      const materiales = await pool.query(`
-        SELECT precio FROM presupuestos WHERE orden_id = $1
-      `, [orden_id]);
-
+      const materiales = await pool.query(`SELECT precio FROM presupuestos WHERE orden_id = $1`, [orden_id]);
       const subtotal = materiales.rows.reduce((acc, mat) => acc + Number(mat.precio), 0);
-      const total = subtotal + 10; // $10 diagnóstico
+      const total = subtotal + 10;
 
       await pool.query(`
         INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
         VALUES ($1, $2, $3, false, $4, $5)
       `, [clienteNombre, 'Reparación y diagnóstico', total, clienteID, orden_id]);
     } else {
-      // Rechazado: solo diagnóstico
-await pool.query(`
-  INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
-  VALUES ($1, $2, $3, $4, $5, $6)
-`, [clienteNombre, 'Diagnóstico', 10, false, clienteID, orden_id]);
+      await pool.query(`
+        INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
+        VALUES ($1, $2, $3, false, $4, $5)
+      `, [clienteNombre, 'Diagnóstico', 10, clienteID, orden_id]);
     }
 
     res.json({ mensaje: 'Aprobación actualizada y factura generada correctamente.' });
