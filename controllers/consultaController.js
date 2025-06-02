@@ -234,3 +234,28 @@ exports.actualizarAprobacionPresupuesto = async (req, res) => {
     res.status(500).json({ mensaje: 'Error al procesar la aprobación del cliente.' });
   }
 };
+
+// Obtener órdenes listas para entrega
+exports.obtenerOrdenesListasParaEntrega = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT o.id, o.estado_actual, o.aprobado, c.nombre AS cliente, e.marca, e.modelo
+      FROM ordenes o
+      JOIN equipos e ON o.equipo_id = e.id
+      JOIN clientes c ON e.cliente_id = c.id
+      WHERE o.estado_actual = 'lista para entrega'
+    `);
+
+    const ordenes = result.rows.map(orden => ({
+      ...orden,
+      estado_actual: orden.aprobado === false
+        ? 'Rechazado por cliente'
+        : 'Lista para entrega'
+    }));
+
+    res.json(ordenes);
+  } catch (error) {
+    console.error('Error al obtener órdenes listas para entrega:', error);
+    res.status(500).json({ mensaje: 'Error al obtener órdenes listas para entrega' });
+  }
+};

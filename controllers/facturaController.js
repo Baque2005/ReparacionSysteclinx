@@ -5,35 +5,89 @@ exports.aprobarReparacion = async (req, res) => {
   const { orden_id, aprobado } = req.body;
 
   try {
-    // Actualizar campos de autorización
+    if (typeof aprobado !== 'boolean') {
+      return res.status(400).json({ mensaje: 'El campo "aprobado" debe ser booleano.' });
+    }
+
+    // Actualizar campos de la orden
     await pool.query(
-      'UPDATE ordenes SET requiere_autorizacion = TRUE, autorizado = $1, aprobado = $1 WHERE id = $2',
+      'UPDATE ordenes SET requiere_autorizacion = TRUE, autorizado = $1 WHERE id = $2',
       [aprobado, orden_id]
     );
 
-    // Si el cliente rechaza, generar factura de diagnóstico
     if (!aprobado) {
+      // Cliente rechaza: generar factura solo por diagnóstico
       const montoDiagnostico = 10;
-      const iva = montoDiagnostico * 0.15;
-      const total = montoDiagnostico + iva;
+      const iva = parseFloat((montoDiagnostico * 0.15).toFixed(2));
+      const total = parseFloat((montoDiagnostico + iva).toFixed(2));
 
       await pool.query(
         `INSERT INTO facturas (orden_id, monto, tipo, pagado)
-         VALUES ($1, $2, 'Diagnóstico', false)`,
+         VALUES ($1, $2, 'diagnostico', false)`,
         [orden_id, total]
+      );
+
+      await pool.query(
+        'INSERT INTO estados (orden_id, estado) VALUES ($1, $2)',
+        [orden_id, 'Presupuesto rechazado']
       );
 
       return res.json({
         mensaje: '❌ Reparación rechazada. Factura de diagnóstico generada.',
-        factura: { monto: total, tipo: 'Diagnóstico' }
+        factura: { monto: total, tipo: 'diagnostico' }
+      });
+    } else {
+      // Cliente aprueba: calcular subtotal de diagnóstico + materiales
+      const diagnostico = 10;
+
+      const materialesRes = await pool.query(
+        'SELECT material FROM presupuestos WHERE orden_id = $1',
+        [orden_id]
+      );
+
+      let totalMateriales = 0;
+
+      if (materialesRes.rows.length > 0) {
+        const materiales = materialesRes.rows[0].material;
+
+        if (Array.isArray(materiales)) {
+          materiales.forEach(item => {
+            if (item && typeof item.precio === 'number') {
+              totalMateriales += item.precio;
+            }
+          });
+        }
+      }
+
+      const subtotal = diagnostico + totalMateriales;
+      const iva = parseFloat((subtotal * 0.15).toFixed(2));
+      const total = parseFloat((subtotal + iva).toFixed(2));
+
+      await pool.query(
+        `INSERT INTO facturas (orden_id, monto, tipo, pagado)
+         VALUES ($1, $2, 'reparacion', false)`,
+        [orden_id, total]
+      );
+
+      await pool.query(
+        'INSERT INTO estados (orden_id, estado) VALUES ($1, $2)',
+        [orden_id, 'Presupuesto aprobado']
+      );
+
+      return res.json({
+        mensaje: '✅ Presupuesto aprobado. Factura generada correctamente.',
+        factura: {
+          tipo: 'reparacion y diagnóstico',
+          subtotal: subtotal.toFixed(2),
+          iva: iva.toFixed(2),
+          total: total.toFixed(2)
+        }
       });
     }
 
-    res.json({ mensaje: '✅ Presupuesto aprobado. Factura se generará al finalizar la reparación.' });
-
   } catch (error) {
-    console.error('❌ Error al procesar aprobación:', error);
-    res.status(500).json({ mensaje: 'Error al registrar aprobación o rechazo' });
+    console.error('❌ Error al procesar aprobación/rechazo:', error.message);
+    res.status(500).json({ mensaje: 'Error interno al procesar la solicitud.' });
   }
 };
 
@@ -77,6 +131,7 @@ exports.registrarPago = async (req, res) => {
   }
 };
 
+// Obtener facturas pendientes (no pagadas)
 exports.obtenerFacturasPendientes = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -94,6 +149,7 @@ exports.obtenerFacturasPendientes = async (req, res) => {
   }
 };
 
+// Obtener facturas por cliente (por ID)
 exports.obtenerFacturasPorCliente = async (req, res) => {
   const { cliente_id } = req.params;
   try {
@@ -113,6 +169,7 @@ exports.obtenerFacturasPorCliente = async (req, res) => {
   }
 };
 
+// Obtener facturas por correo
 exports.obtenerFacturasPorCorreo = async (req, res) => {
   const { correo } = req.params;
   try {
@@ -133,6 +190,7 @@ exports.obtenerFacturasPorCorreo = async (req, res) => {
   }
 };
 
+// Obtener facturas pagadas
 exports.obtenerFacturasPagadas = async (req, res) => {
   try {
     const result = await pool.query(`

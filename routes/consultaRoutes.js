@@ -13,5 +13,6 @@ router.get('/cliente-por-correo/:correo', consultaController.obtenerOrdenesPorCo
 router.get('/facturas-pagadas', verificarToken, consultaController.obtenerFacturasPagadas);
 router.get('/facturas/pendientes', verificarToken, consultaController.obtenerFacturasPendientes);
 router.put('/ordenes/:orden_id/aprobacion', consultaController.actualizarAprobacionPresupuesto);
+router.get('/ordenes/listas-entrega', verificarToken, consultaController.obtenerOrdenesListasParaEntrega);
 
 module.exports = router;
