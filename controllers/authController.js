@@ -24,25 +24,18 @@ exports.login = async (req, res) => {
   const { correo, contraseña } = req.body;
 
   try {
-    console.log('📥 Intento de login con:', correo, contraseña);
-
     const result = await pool.query(
       'SELECT * FROM usuarios WHERE correo = $1',
       [correo]
     );
 
-    console.log('📦 Resultado de búsqueda:', result.rows);
-
     if (result.rows.length === 0) {
-      console.log('❌ Correo no registrado');
       return res.status(401).json({ mensaje: 'Correo no registrado' });
     }
 
     const usuario = result.rows[0];
 
     const passwordValida = await bcrypt.compare(contraseña, usuario.contraseña);
-    console.log('🔑 Contraseña válida:', passwordValida);
-
     if (!passwordValida) {
       return res.status(401).json({ mensaje: 'Contraseña incorrecta' });
     }
@@ -57,17 +50,9 @@ exports.login = async (req, res) => {
       { expiresIn: '8h' }
     );
 
-    res.json({
-      token,
-      usuario: {
-        id: usuario.id,
-        nombre: usuario.nombre,
-        correo: usuario.correo,
-        rol: usuario.rol,
-      },
-    });
+    res.json({ token, usuario: { id: usuario.id, nombre: usuario.nombre,  correo: usuario.correo, rol: usuario.rol } });
   } catch (error) {
-    console.error('💥 Error en login:', error);
+    console.error(error);
     res.status(500).json({ mensaje: 'Error en login' });
   }
 };

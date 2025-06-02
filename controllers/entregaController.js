@@ -25,20 +25,21 @@ exports.entregarEquipo = async (req, res) => {
       [orden_id, observaciones]
     );
 
-    // Cerrar la orden (opcional: cambiar estado actual)
+    // Cerrar la orden cambiando su estado a 'completado'
     await pool.query(
       'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
-      ['entregada', orden_id]
+      ['completado', orden_id]
     );
 
+    // Registrar el estado en la tabla de estados
     await pool.query(
       'INSERT INTO estados (orden_id, estado) VALUES ($1, $2)',
-      [orden_id, 'entregada']
+      [orden_id, 'completado']
     );
 
-    console.log(`✅ Orden ${orden_id} cerrada y entregada al cliente.`);
+    console.log(`✅ Orden ${orden_id} completada y entregada al cliente.`);
 
-    res.json({ mensaje: 'Orden entregada y registrada en el historial.' });
+    res.json({ mensaje: 'Orden completada y registrada en el historial.' });
 
   } catch (error) {
     console.error(error);

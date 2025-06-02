@@ -43,15 +43,8 @@ exports.obtenerOrdenesPorTecnico = async (req, res) => {
 // Actualizar estado (y generar factura si reparado)
 exports.actualizarEstadoOrden = async (req, res) => {
   const { orden_id, nuevo_estado, tecnico_id } = req.body;
-
   try {
-    // Actualizar el estado
-    await pool.query(
-      'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
-      [nuevo_estado, orden_id]
-    );
-
-    // Registrar en tabla de estados
+    // Registrar nuevo estado
     await pool.query(
       'INSERT INTO estados (orden_id, estado, tecnico_id) VALUES ($1, $2, $3)',
       [orden_id, nuevo_estado, tecnico_id]
@@ -63,24 +56,49 @@ exports.actualizarEstadoOrden = async (req, res) => {
       [orden_id, tecnico_id, `Cambio estado a "${nuevo_estado}"`]
     );
 
-    // 💡 Lógica especial si se marca como "rechazado" (finalización por rechazo)
-    if (nuevo_estado === 'rechazado') {
-      const costoDiagnostico = 10.00;
-      const iva = 0.15;
-      const total = parseFloat((costoDiagnostico * (1 + iva)).toFixed(2));
+    if (nuevo_estado === 'reparado') {
+      const aprobadoRes = await pool.query(
+        'SELECT aprobado FROM ordenes WHERE id = $1',
+        [orden_id]
+      );
+      const aprobado = aprobadoRes.rows[0]?.aprobado;
+
+      let total = 0;
+      let tipo = '';
+      let concepto = '';
+
+      if (aprobado) {
+        // Cliente aprobó: materiales + diagnóstico
+        const materiales = await pool.query(
+          'SELECT precio FROM presupuestos WHERE orden_id = $1',
+          [orden_id]
+        );
+        const sumaMateriales = materiales.rows.reduce((acc, m) => acc + Number(m.precio), 0);
+        total = sumaMateriales + 10;
+        tipo = 'reparacion';
+        concepto = 'Reparación y diagnóstico';
+      } else {
+        // Cliente rechazó: solo diagnóstico
+        total = 10;
+        tipo = 'diagnostico';
+        concepto = 'Diagnóstico';
+      }
+
+      const montoConIVA = Number((total * 1.15).toFixed(2));
 
       await pool.query(
-        'INSERT INTO facturas (orden_id, monto, tipo) VALUES ($1, $2, $3)',
-        [orden_id, total, 'diagnostico']
+        'INSERT INTO facturas (orden_id, monto, tipo, concepto) VALUES ($1, $2, $3, $4)',
+        [orden_id, montoConIVA, tipo, concepto]
       );
 
-      // Marcar la orden como lista para entrega
+      console.log(`🧾 Factura generada: $${montoConIVA} por "${concepto}" para orden ${orden_id}`);
+
+      // Actualizar estado de orden a "lista para entrega"
       await pool.query(
         'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
         ['lista para entrega', orden_id]
       );
 
-      // Registrar evento de transición a entrega
       await pool.query(
         'INSERT INTO estados (orden_id, estado, tecnico_id) VALUES ($1, $2, $3)',
         [orden_id, 'lista para entrega', tecnico_id]
@@ -88,33 +106,17 @@ exports.actualizarEstadoOrden = async (req, res) => {
 
       await pool.query(
         'INSERT INTO historial_tecnico (orden_id, tecnico_id, descripcion) VALUES ($1, $2, $3)',
-        [orden_id, tecnico_id, 'Finalizó orden por rechazo del cliente. Generada factura de diagnóstico.']
+        [orden_id, tecnico_id, `Equipo reparado. Se generó factura de tipo "${tipo}".`]
       );
-
-      console.log(`🧾 Factura por diagnóstico generada ($${total}) para orden ${orden_id}`);
-    }
-
-    // ✅ Si es reparado, generar factura completa
-    if (nuevo_estado === 'reparado') {
-      const materiales = await pool.query(
-        'SELECT precio FROM presupuestos WHERE orden_id = $1',
-        [orden_id]
-      );
-
-      const totalMateriales = materiales.rows.reduce((acc, m) => acc + Number(m.precio), 0);
-      const costoDiagnostico = 10.00;
-      const totalFinal = parseFloat((totalMateriales + costoDiagnostico).toFixed(2));
-
+    } else {
+      // Si el estado no es 'reparado', actualizar directamente el estado_actual
       await pool.query(
-        'INSERT INTO facturas (orden_id, monto, tipo) VALUES ($1, $2, $3)',
-        [orden_id, totalFinal, 'reparacion']
+        'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
+        [nuevo_estado, orden_id]
       );
-
-      console.log(`🧾 Factura generada: $${totalFinal} (diagnóstico + materiales) para orden ${orden_id}`);
     }
 
-    res.json({ mensaje: 'Estado actualizado y registrado correctamente' });
-
+    res.json({ mensaje: 'Estado actualizado y registrado en historial técnico' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ mensaje: 'Error al actualizar estado' });
@@ -208,3 +210,4 @@ exports.entregarOrden = async (req, res) => {
     res.status(500).json({ mensaje: 'Error al entregar orden' });
   }
 };
+
