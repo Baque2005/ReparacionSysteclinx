@@ -164,3 +164,52 @@ exports.obtenerFacturasPendientes = async (req, res) => {
     res.status(500).json({ mensaje: 'Error al obtener facturas pendientes.' });
   }
 };
+
+exports.actualizarAprobacionPresupuesto = async (req, res) => {
+  const { orden_id } = req.params;
+  const { aprobado } = req.body; // true o false
+  try {
+    // Actualizar estado de aprobación
+    await pool.query(`UPDATE ordenes SET aprobado = $1 WHERE id = $2`, [aprobado, orden_id]);
+
+    // Obtener cliente y materiales
+    const datosOrden = await pool.query(`
+      SELECT o.id AS orden_id, c.nombre AS cliente_nombre, c.correo, c.id AS cliente_id
+      FROM ordenes o
+      JOIN equipos e ON o.equipo_id = e.id
+      JOIN clientes c ON e.cliente_id = c.id
+      WHERE o.id = $1
+    `, [orden_id]);
+
+    if (datosOrden.rows.length === 0) return res.status(404).json({ mensaje: 'Orden no encontrada' });
+
+    const clienteNombre = datosOrden.rows[0].cliente_nombre;
+    const clienteID = datosOrden.rows[0].cliente_id;
+
+    if (aprobado) {
+      // Aprobado: obtener materiales
+      const materiales = await pool.query(`
+        SELECT precio FROM presupuestos WHERE orden_id = $1
+      `, [orden_id]);
+
+      const subtotal = materiales.rows.reduce((acc, mat) => acc + Number(mat.precio), 0);
+      const total = subtotal + 10; // $10 diagnóstico
+
+      await pool.query(`
+        INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
+        VALUES ($1, $2, $3, false, $4, $5)
+      `, [clienteNombre, 'Reparación y diagnóstico', total, clienteID, orden_id]);
+    } else {
+      // Rechazado: solo diagnóstico
+      await pool.query(`
+        INSERT INTO facturas (cliente, motivo, total, pagado, cliente_id, orden_id)
+        VALUES ($1, $2, 10, false, $3, $4)
+      `, [clienteNombre, 'Diagnóstico', clienteID, orden_id]);
+    }
+
+    res.json({ mensaje: 'Aprobación actualizada y factura generada correctamente.' });
+  } catch (error) {
+    console.error('Error al actualizar aprobación y generar factura:', error);
+    res.status(500).json({ mensaje: 'Error al procesar la aprobación del cliente.' });
+  }
+};
