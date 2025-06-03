@@ -49,15 +49,14 @@ exports.reporteTecnico = async (req, res) => {
   }
 };
 
-// controllers/consultaController.js
+// Resumen general
 exports.obtenerResumen = async (req, res) => {
   try {
     const totalOrdenesRes = await pool.query('SELECT COUNT(*) FROM ordenes');
-   const ordenesCompletadasRes = await pool.query("SELECT COUNT(*) FROM ordenes WHERE estado_actual = 'entregado'");
+    const ordenesCompletadasRes = await pool.query("SELECT COUNT(*) FROM ordenes WHERE estado_actual = 'entregado'");
     const totalTecnicosRes = await pool.query("SELECT COUNT(*) FROM usuarios WHERE rol = 'tecnico'");
     const totalFacturasRes = await pool.query('SELECT COUNT(*) FROM facturas');
 
-    // Órdenes por estado (para la gráfica)
     const estadosRes = await pool.query(`
       SELECT estado_actual AS estado, COUNT(*) AS cantidad
       FROM ordenes
@@ -80,6 +79,7 @@ exports.obtenerResumen = async (req, res) => {
   }
 };
 
+// Obtener presupuestos pendientes
 exports.obtenerPresupuestosPendientes = async (req, res) => {
   const { cliente_id } = req.params;
 
@@ -117,6 +117,7 @@ exports.obtenerPresupuestoPorOrden = async (req, res) => {
   }
 };
 
+// Obtener órdenes por correo del cliente
 exports.obtenerOrdenesPorCorreo = async (req, res) => {
   const { correo } = req.params;
 
@@ -133,5 +134,31 @@ exports.obtenerOrdenesPorCorreo = async (req, res) => {
   } catch (error) {
     console.error('❌ Error al consultar órdenes por correo:', error);
     res.status(500).json({ mensaje: 'Error al consultar órdenes del cliente por correo' });
+  }
+};
+
+// ✅ Registrar diagnóstico y reiniciar aprobación
+exports.registrarDiagnostico = async (req, res) => {
+  const { orden_id } = req.body;
+
+  try {
+    // Insertar nuevo estado diagnóstico
+    await pool.query(`
+      INSERT INTO estados (orden_id, estado, fecha)
+      VALUES ($1, 'diagnóstico', NOW())
+    `, [orden_id]);
+
+    // Reiniciar campo aprobado a null
+    await pool.query(`
+      UPDATE ordenes
+      SET aprobado = NULL,
+          estado_actual = 'diagnóstico'
+      WHERE id = $1
+    `, [orden_id]);
+
+    res.status(200).json({ mensaje: 'Diagnóstico registrado y aprobación reiniciada correctamente.' });
+  } catch (error) {
+    console.error('❌ Error al registrar diagnóstico:', error);
+    res.status(500).json({ mensaje: 'Error al registrar diagnóstico.' });
   }
 };

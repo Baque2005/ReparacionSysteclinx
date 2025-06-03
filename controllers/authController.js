@@ -34,7 +34,8 @@ exports.login = async (req, res) => {
     }
 
     const usuario = result.rows[0];
-
+console.log('👉 Contraseña recibida desde frontend:', contraseña);
+console.log('🔒 Hash guardado en la BD:', usuario.contraseña);
     const passwordValida = await bcrypt.compare(contraseña, usuario.contraseña);
     if (!passwordValida) {
       return res.status(401).json({ mensaje: 'Contraseña incorrecta' });

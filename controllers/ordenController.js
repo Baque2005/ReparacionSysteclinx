@@ -6,7 +6,6 @@ const {
   generarPassword
 } = require('../utils/mailer');
 
-// Asignar técnico a orden
 exports.asignarTecnico = async (req, res) => {
   const { orden_id, tecnico_id } = req.body;
   try {
@@ -21,7 +20,6 @@ exports.asignarTecnico = async (req, res) => {
   }
 };
 
-// Obtener órdenes del técnico (con aprobado)
 exports.obtenerOrdenesPorTecnico = async (req, res) => {
   const { tecnico_id } = req.params;
   try {
@@ -36,21 +34,18 @@ exports.obtenerOrdenesPorTecnico = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al obtener órdenes' });
+    res.status(500).json({ mensaje: 'Error al obtener órdenes del técnico' });
   }
 };
 
-// Actualizar estado (y generar factura si reparado)
 exports.actualizarEstadoOrden = async (req, res) => {
   const { orden_id, nuevo_estado, tecnico_id } = req.body;
   try {
-    // Registrar nuevo estado
     await pool.query(
       'INSERT INTO estados (orden_id, estado, tecnico_id) VALUES ($1, $2, $3)',
       [orden_id, nuevo_estado, tecnico_id]
     );
 
-    // Registrar en historial técnico
     await pool.query(
       'INSERT INTO historial_tecnico (orden_id, tecnico_id, descripcion) VALUES ($1, $2, $3)',
       [orden_id, tecnico_id, `Cambio estado a "${nuevo_estado}"`]
@@ -68,7 +63,6 @@ exports.actualizarEstadoOrden = async (req, res) => {
       let concepto = '';
 
       if (aprobado) {
-        // Cliente aprobó: materiales + diagnóstico
         const materiales = await pool.query(
           'SELECT precio FROM presupuestos WHERE orden_id = $1',
           [orden_id]
@@ -78,10 +72,9 @@ exports.actualizarEstadoOrden = async (req, res) => {
         tipo = 'reparacion';
         concepto = 'Reparación y diagnóstico';
       } else {
-        // Cliente rechazó: solo diagnóstico
         total = 10;
         tipo = 'diagnostico';
-        concepto = 'Diagnóstico';
+        concepto = 'Solo diagnóstico';
       }
 
       const montoConIVA = Number((total * 1.15).toFixed(2));
@@ -91,9 +84,8 @@ exports.actualizarEstadoOrden = async (req, res) => {
         [orden_id, montoConIVA, tipo, concepto]
       );
 
-      console.log(`🧾 Factura generada: $${montoConIVA} por "${concepto}" para orden ${orden_id}`);
+      console.log(`🧾 Factura generada para orden ${orden_id}: $${montoConIVA}`);
 
-      // Actualizar estado de orden a "lista para entrega"
       await pool.query(
         'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
         ['lista para entrega', orden_id]
@@ -106,10 +98,14 @@ exports.actualizarEstadoOrden = async (req, res) => {
 
       await pool.query(
         'INSERT INTO historial_tecnico (orden_id, tecnico_id, descripcion) VALUES ($1, $2, $3)',
-        [orden_id, tecnico_id, `Equipo reparado. Se generó factura de tipo "${tipo}".`]
+        [orden_id, tecnico_id, `Equipo reparado. Se generó factura (${tipo}).`]
+      );
+    } else if (nuevo_estado === 'diagnóstico') {
+      await pool.query(
+        'UPDATE ordenes SET estado_actual = $1, aprobado = NULL WHERE id = $2',
+        [nuevo_estado, orden_id]
       );
     } else {
-      // Si el estado no es 'reparado', actualizar directamente el estado_actual
       await pool.query(
         'UPDATE ordenes SET estado_actual = $1 WHERE id = $2',
         [nuevo_estado, orden_id]
@@ -119,11 +115,10 @@ exports.actualizarEstadoOrden = async (req, res) => {
     res.json({ mensaje: 'Estado actualizado y registrado en historial técnico' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al actualizar estado' });
+    res.status(500).json({ mensaje: 'Error al actualizar estado de la orden' });
   }
 };
 
-// Obtener órdenes pendientes
 exports.obtenerOrdenesPendientes = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -140,11 +135,16 @@ exports.obtenerOrdenesPendientes = async (req, res) => {
   }
 };
 
-// Guardar presupuesto
+// ✅ FUNCION ACTUALIZADA
 exports.guardarPresupuesto = async (req, res) => {
   const { orden_id, materiales } = req.body;
 
   try {
+    await pool.query(
+      'DELETE FROM presupuestos WHERE orden_id = $1',
+      [orden_id]
+    );
+
     for (const item of materiales) {
       await pool.query(
         'INSERT INTO presupuestos (orden_id, material, precio) VALUES ($1, $2, $3)',
@@ -166,14 +166,13 @@ exports.guardarPresupuesto = async (req, res) => {
       await enviarCorreoPresupuesto(destinatario, orden_id);
     }
 
-    res.json({ mensaje: 'Presupuesto guardado correctamente' });
+    res.json({ mensaje: 'Presupuesto actualizado y notificado al cliente' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ mensaje: 'Error al guardar presupuesto' });
   }
 };
 
-// Listas para entrega
 exports.obtenerListasEntrega = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -190,7 +189,6 @@ exports.obtenerListasEntrega = async (req, res) => {
   }
 };
 
-// Confirmar entrega final
 exports.entregarOrden = async (req, res) => {
   const { orden_id } = req.body;
   try {
@@ -204,10 +202,9 @@ exports.entregarOrden = async (req, res) => {
       [orden_id, 'entregado']
     );
 
-    res.json({ mensaje: 'Orden marcada como entregada' });
+    res.json({ mensaje: 'Orden marcada como entregada al cliente' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ mensaje: 'Error al entregar orden' });
+    res.status(500).json({ mensaje: 'Error al registrar entrega' });
   }
 };
-
